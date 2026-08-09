@@ -1,0 +1,31 @@
+name: Weekly flake digest
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore flake-agent history DB
+        run: |
+          if git ls-remote --exit-code --heads origin flake-data >/dev/null 2>&1; then
+            git fetch origin flake-data:refs/remotes/origin/flake-data
+            git show origin/flake-data:flake_agent.db > flake_agent.db 2>/dev/null || true
+          fi
+        shell: bash
+
+      - name: Post weekly digest
+        uses: YOUR-GITHUB-USERNAME/flake-agent/digest@v1
+        with:
+          repo: ${{ github.repository }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,106 @@
+name: Tests
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  actions: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Restore flake-agent history DB
+        run: |
+          if git ls-remote --exit-code --heads origin flake-data >/dev/null 2>&1; then
+            git fetch origin flake-data:refs/remotes/origin/flake-data
+            git show origin/flake-data:flake_agent.db > flake_agent.db 2>/dev/null || true
+          fi
+        shell: bash
+
+      - name: Run tests
+        id: run_tests
+        run: go test -json -count=1 ./... 2>&1 | tee test_output.log > report.json
+        continue-on-error: true
+        shell: bash
+
+      - name: Install flake-agent CLI
+        if: steps.run_tests.outcome == 'failure'
+        run: pip install "flake-agent @ git+https://github.com/YOUR-GITHUB-USERNAME/flake-agent.git@v1"
+
+      - name: Extract failed test name
+        id: extract
+        if: steps.run_tests.outcome == 'failure'
+        run: flake-agent extract-failed-test --report report.json --format go
+
+      - name: Rerun failing test locally
+        id: rerun_test
+        if: steps.run_tests.outcome == 'failure'
+        run: |
+          PKG=$(echo "${{ steps.extract.outputs.failed_test_name }}" | cut -d':' -f1)
+          TEST=$(echo "${{ steps.extract.outputs.failed_test_name }}" | sed 's/.*:://')
+          go test -count=1 -run "^${TEST}$" "$PKG"
+        continue-on-error: true
+        shell: bash
+
+      - name: Flake triage
+        if: steps.run_tests.outcome == 'failure'
+        uses: YOUR-GITHUB-USERNAME/flake-agent@v1
+        with:
+          run_id: ${{ github.run_id }}
+          job_id: ${{ github.job }}
+          repo: ${{ github.repository }}
+          commit_sha: ${{ github.sha }}
+          test_name: ${{ steps.extract.outputs.failed_test_name }}
+          pr_number: ${{ github.event.pull_request.number }}
+          log_file: test_output.log
+          rerun_conclusion: ${{ steps.rerun_test.outcome == 'success' && 'success' || 'failure' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+
+      - name: Persist flake-agent history DB
+        if: always() && steps.run_tests.outcome == 'failure'
+        run: |
+          if [ ! -f flake_agent.db ]; then
+            exit 0
+          fi
+          git config user.name "flake-agent-bot"
+          git config user.email "flake-agent-bot@users.noreply.github.com"
+          RESULT=1
+          for attempt in 1 2 3; do
+            rm -rf /tmp/flake-data-worktree
+            if git ls-remote --exit-code --heads origin flake-data >/dev/null 2>&1; then
+              git fetch origin flake-data:refs/remotes/origin/flake-data
+              git worktree add /tmp/flake-data-worktree origin/flake-data
+            else
+              git worktree add -b flake-data /tmp/flake-data-worktree
+            fi
+            cp flake_agent.db /tmp/flake-data-worktree/flake_agent.db
+            (
+              cd /tmp/flake-data-worktree
+              git add flake_agent.db
+              git commit -m "update flake-agent history [skip ci]" --allow-empty
+              git push origin HEAD:flake-data
+            )
+            RESULT=$?
+            git worktree remove /tmp/flake-data-worktree --force
+            if [ $RESULT -eq 0 ]; then
+              break
+            fi
+            sleep $((attempt * 2))
+          done
+        shell: bash
+
+      - name: Fail build if tests failed
+        if: steps.run_tests.outcome == 'failure'
+        run: exit 1

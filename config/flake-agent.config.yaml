@@ -1,0 +1,28 @@
+rerun:
+  enabled: true
+detection:
+  history_window: 20
+  min_runs_before_confident: 1   # lowered for demo purposes -- use 3+ in production
+llm:
+  local:
+    provider: ollama
+    model: llama3
+    endpoint: http://localhost:1   # deliberately unreachable -- forces escalation to Groq/Gemini
+                                     # since no self-hosted runner with Ollama is set up
+  escalation:
+    enabled: true
+    confidence_threshold: 1.0      # always escalate, since local is deliberately unreachable
+    provider: groq
+    model: openai/gpt-oss-20b      # supports strict JSON schema mode on Groq
+reporting:
+  pr_comment: true
+  issue_creation:
+    enabled: true
+    flake_count_threshold: 1       # lowered for demo purposes -- use 3+ in production
+    window_days: 14
+  weekly_digest:
+    enabled: true
+    cron: "0 9 * * 1"
+truncation:
+  head_lines: 200
+  tail_lines: 200
