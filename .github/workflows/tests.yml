@@ -35,7 +35,7 @@ jobs:
 
       - name: Install flake-agent CLI
         if: steps.run_tests.outcome == 'failure'
-        run: pip install "flake-agent @ git+https://github.com/YOUR-GITHUB-USERNAME/flake-agent.git@v1"
+        run: pip install "flake-agent @ git+https://github.com/JaiswalShivang/flake-agent.git@v1"
 
       - name: Extract failed test name
         id: extract
@@ -54,7 +54,7 @@ jobs:
 
       - name: Flake triage
         if: steps.run_tests.outcome == 'failure'
-        uses: YOUR-GITHUB-USERNAME/flake-agent@v1
+        uses: JaiswalShivang/flake-agent@v1
         with:
           run_id: ${{ github.run_id }}
           job_id: ${{ github.job }}

@@ -24,7 +24,7 @@ jobs:
         shell: bash
 
       - name: Post weekly digest
-        uses: YOUR-GITHUB-USERNAME/flake-agent/digest@v1
+        uses: JaiswalShivang/flake-agent/digest@v1
         with:
           repo: ${{ github.repository }}
         env:
